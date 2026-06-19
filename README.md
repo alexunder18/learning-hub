@@ -115,3 +115,7 @@ Configure the setup page with provider "Ollama" and model "llama3".
 ├── Dockerfile
 └── docker-compose.yml
 ```
+
+<img alt="Topic creating chat" src="/CreatingTopic.png" />
+<img alt="Lessons Preview" src="/LessonsPreview.png" />
+<img alt="Topic Preview " src="/TopicsPreview.png" />
