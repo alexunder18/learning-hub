@@ -5,7 +5,7 @@ A self-hosted, single-tenant AI learning system that generates structured multi-
 ## Quick Start (Docker)
 
 ```bash
-git clone https://github.com/iamalexandar/learning-hub.git
+git clone https://github.com/alexunder18/learning-hub.git
 cd learning-hub
 docker compose up -d
 ```
@@ -15,7 +15,7 @@ Open http://localhost:8080 — the browser-based setup will guide you through pr
 ## Quick Start (Manual)
 
 ```bash
-git clone https://github.com/iamalexandar/learning-hub.git
+git clone https://github.com/alexunder18/learning-hub.git
 cd learning-hub
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
