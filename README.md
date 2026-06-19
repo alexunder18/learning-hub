@@ -10,14 +10,15 @@ cd learning-hub
 docker compose up -d
 ```
 
-Open http://localhost:8080 — the browser-based setup will guide you through provider configuration.
+Open http://localhost:8080 - the browser-based setup will guide you through provider configuration.
 
 ## Quick Start (Manual)
 
 ```bash
 git clone https://github.com/alexunder18/learning-hub.git
 cd learning-hub
-python -m venv venv && source venv/bin/activate
+python -m venv venv
+.\venv\Scripts\activate
 pip install -r requirements.txt
 python server.py
 ```
