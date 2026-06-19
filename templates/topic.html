@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}{{ topic.name }} &mdash; {{ school_name }}{% endblock %}
+
+{% block content %}
+<a href="/" class="fab-toggle fab-back" aria-label="{{ 'Nazad' if ui_lang == 'sr' else 'Back' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a>
+
+<div class="has-fab-back"></div>
+<div class="topic-header">
+  <h1>{{ topic.name }}</h1>
+  {% if topic.mission_why %}
+  <p class="topic-mission">{{ topic.mission_why }}</p>
+  {% endif %}
+</div>
+
+<h2>{{ 'Lekcije' if ui_lang == 'sr' else 'Lessons' }}</h2>
+
+<ul class="syllabus" id="syllabus">
+  {% for item in topic.syllabus %}
+  <li class="syllabus-item syllabus-{{ item.status }}"
+      id="lesson-{{ item.number }}"
+      data-num="{{ item.number }}"
+      data-status="{{ item.status }}"
+      {% if item.status == 'completed' %}onclick="window.location='/topic/{{ topic.slug }}/lessons/{{ item.file }}'"
+      {% elif item.status == 'available' %}onclick="confirmGenerate({{ item.number }}, '{{ item.title|e }}')"
+      {% endif %}>
+    <span class="syllabus-number">
+      {% if item.status == 'completed' %}
+      <span class="syllabus-check">&#10003;</span>
+      {% elif item.status in ('generating', 'queued') %}
+      <span class="spinner spinner-small"></span>
+      {% else %}
+      {{ item.number }}
+      {% endif %}
+    </span>
+    <span class="syllabus-title">
+      {% if item.status == 'completed' %}
+      <a href="/topic/{{ topic.slug }}/lessons/{{ item.file }}" class="syllabus-link" onclick="event.stopPropagation();">{{ item.title }}</a>
+      {% else %}
+      {{ item.title }}
+      {% endif %}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+
+{% if topic.references %}
+<hr>
+<h2>{{ 'Reference' if ui_lang == 'sr' else 'Reference' }}</h2>
+<ul class="reference-list">
+  {% for ref in topic.references %}
+  <li class="reference-item">
+    <a href="/topic/{{ topic.slug }}/reference/{{ ref.file }}">{{ ref.title }}</a>
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<div class="topic-delete-area">
+  <button class="btn btn-danger" onclick="deleteTopic()">{{ 'Obriši temu' if ui_lang == 'sr' else 'Delete Topic' }}</button>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal-overlay" id="generate-modal">
+  <div class="modal">
+    <h3 id="modal-title"></h3>
+    <p id="modal-text"></p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">
+        {{ 'Otkaži' if ui_lang == 'sr' else 'Cancel' }}
+      </button>
+      <button class="btn btn-primary" id="modal-confirm" onclick="doGenerate()">
+        {{ 'Generiši' if ui_lang == 'sr' else 'Generate' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal-overlay" id="delete-modal">
+  <div class="modal">
+    <h3>{{ 'Obriši temu' if ui_lang == 'sr' else 'Delete Topic' }}</h3>
+    <p>
+      {% if ui_lang == 'sr' %}
+      Da li ste sigurni da želite da obrišete temu "{{ topic.name }}"? Ova akcija se ne može poništiti.
+      {% else %}
+      Are you sure you want to delete "{{ topic.name }}"? This action cannot be undone.
+      {% endif %}
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('delete-modal').classList.remove('open')">
+        {{ 'Otkaži' if ui_lang == 'sr' else 'Cancel' }}
+      </button>
+      <button class="btn btn-danger" onclick="doDelete()">
+        {{ 'Obriši' if ui_lang == 'sr' else 'Delete' }}
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var SLUG = '{{ topic.slug }}';
+var UI_LANG = '{{ ui_lang }}';
+var pendingNum = null;
+
+function confirmGenerate(num, title) {
+  pendingNum = num;
+  var modal = document.getElementById('generate-modal');
+  document.getElementById('modal-title').textContent =
+    UI_LANG === 'sr' ? ('Lekcija ' + num + ': ' + title) : ('Lesson ' + num + ': ' + title);
+  document.getElementById('modal-text').textContent =
+    UI_LANG === 'sr'
+      ? 'Ova lekcija još nije generisana. Da li želite da je generišete sada?'
+      : 'This lesson has not been generated yet. Would you like to generate it now?';
+  modal.classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('generate-modal').classList.remove('open');
+  pendingNum = null;
+}
+
+function doGenerate() {
+  if (!pendingNum) return;
+  var num = pendingNum;
+  closeModal();
+
+  var li = document.getElementById('lesson-' + num);
+  li.className = 'syllabus-item syllabus-generating';
+  li.dataset.status = 'generating';
+  li.onclick = null;
+  li.querySelector('.syllabus-number').innerHTML = '<span class="spinner spinner-small"></span>';
+
+  apiFetch('/api/generate-lesson/' + SLUG + '/' + num, { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        li.className = 'syllabus-item syllabus-available';
+        li.dataset.status = 'available';
+        li.querySelector('.syllabus-number').textContent = num;
+      }
+      startPolling();
+    })
+    .catch(function() {
+      li.className = 'syllabus-item syllabus-available';
+      li.dataset.status = 'available';
+      li.querySelector('.syllabus-number').textContent = num;
+    });
+}
+
+function deleteTopic() {
+  document.getElementById('delete-modal').classList.add('open');
+}
+
+function doDelete() {
+  apiFetch('/api/delete-topic/' + SLUG, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) window.location.href = '/';
+      else alert(data.error || 'Failed');
+    });
+}
+
+var polling = false;
+function startPolling() {
+  if (polling) return;
+  polling = true;
+  poll();
+}
+
+function poll() {
+  fetch('/api/topic-status/' + SLUG)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var changed = false;
+      var lessons = data.lessons || {};
+
+      for (var num in lessons) {
+        var li = document.getElementById('lesson-' + num);
+        if (!li) continue;
+        var oldStatus = li.dataset.status;
+        var newStatus = lessons[num];
+
+        if (oldStatus !== newStatus) {
+          changed = true;
+          if (newStatus === 'completed') {
+            location.reload();
+            return;
+          }
+          li.dataset.status = newStatus;
+          li.className = 'syllabus-item syllabus-' + newStatus;
+          if (newStatus === 'generating' || newStatus === 'queued') {
+            li.querySelector('.syllabus-number').innerHTML = '<span class="spinner spinner-small"></span>';
+            li.onclick = null;
+          }
+        }
+      }
+
+      if (data.any_active) {
+        setTimeout(poll, 3000);
+      } else {
+        polling = false;
+        if (changed) location.reload();
+      }
+    })
+    .catch(function() {
+      setTimeout(poll, 5000);
+    });
+}
+
+(function() {
+  var items = document.querySelectorAll('.syllabus-item');
+  for (var i = 0; i < items.length; i++) {
+    var s = items[i].dataset.status;
+    if (s === 'generating' || s === 'queued') {
+      startPolling();
+      return;
+    }
+  }
+})();
+</script>
+{% endblock %}

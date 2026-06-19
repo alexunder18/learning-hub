@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<header class="site-header">
+  <h1>{{ school_name }}</h1>
+</header>
+
+{% if topics %}
+<div class="section-bar">
+  <div class="section-title">{{ 'Vaše teme' if ui_lang == 'sr' else 'Your Topics' }}</div>
+  <div class="view-controls">
+    <button class="view-btn active" id="btn-grid" title="{{ 'Mreža' if ui_lang == 'sr' else 'Grid view' }}" onclick="setView('grid')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+    </button>
+    <button class="view-btn" id="btn-list" title="{{ 'Lista' if ui_lang == 'sr' else 'List view' }}" onclick="setView('list')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2.5" rx="1"/><rect x="1" y="6.75" width="14" height="2.5" rx="1"/><rect x="1" y="11.5" width="14" height="2.5" rx="1"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="topic-grid">
+  {% for topic in topics %}
+  <a href="/topic/{{ topic.slug }}" class="topic-card" onclick="event.preventDefault(); var d=this.querySelector('.topic-desc'),b=this.querySelector('.topic-expand-btn'); if(event.target.closest('.topic-expand-btn')){d.classList.toggle('open');b.classList.toggle('open');} else {window.location='/topic/{{ topic.slug }}';}">
+    <div class="topic-card-inner">
+      <div class="topic-icon">{{ topic.icon or '&#9781;' }}</div>
+      <div class="topic-info">
+        <div class="topic-name">{{ topic.name }}</div>
+        <div class="topic-meta">
+          {% if ui_lang == 'sr' %}
+          <span>{{ topic.lesson_count }} od {{ topic.syllabus_count }} lekcija</span>
+          {% else %}
+          <span>{{ topic.lesson_count }} of {{ topic.syllabus_count }} lessons</span>
+          {% endif %}
+          {% if topic.is_generating %}
+          <span>&middot; <span class="spinner spinner-small"></span> {{ 'generisanje' if ui_lang == 'sr' else 'generating' }}</span>
+          {% endif %}
+        </div>
+        {% if topic.syllabus_count > 0 %}
+        <div class="progress-bar"><div class="progress-fill" style="width:{{ (topic.lesson_count / topic.syllabus_count * 100)|int if topic.syllabus_count > 0 else 0 }}%"></div></div>
+        {% endif %}
+      </div>
+      <button class="topic-expand-btn" onclick="event.stopPropagation();">&#9662;</button>
+    </div>
+    <div class="topic-desc">{{ topic.description }}</div>
+  </a>
+  {% endfor %}
+
+  <a href="/new-topic" class="card-add">
+    <div class="card-add-content">
+      <div class="card-add-icon">+</div>
+      <div class="card-add-text">{{ 'Nova tema' if ui_lang == 'sr' else 'New Topic' }}</div>
+    </div>
+  </a>
+</div>
+
+<div class="topic-list">
+  {% for topic in topics %}
+  <a href="/topic/{{ topic.slug }}" class="topic-row">
+    <div class="topic-row-icon">{{ topic.icon or '&#9781;' }}</div>
+    <div class="topic-row-name">{{ topic.name }}</div>
+    <div class="topic-row-progress">
+      {% if topic.is_generating %}
+      <span class="spinner spinner-small"></span>
+      {% endif %}
+      <span class="topic-row-meta">{{ topic.lesson_count }}/{{ topic.syllabus_count }}</span>
+      {% if topic.syllabus_count > 0 %}
+      <div class="progress-bar-sm"><div class="progress-fill" style="width:{{ (topic.lesson_count / topic.syllabus_count * 100)|int if topic.syllabus_count > 0 else 0 }}%"></div></div>
+      {% endif %}
+    </div>
+  </a>
+  {% endfor %}
+  <a href="/new-topic" class="add-row">
+    <span style="color:var(--accent); font-size:1rem;">+</span>
+    <span>{{ 'Nova tema' if ui_lang == 'sr' else 'New Topic' }}</span>
+  </a>
+</div>
+
+{% else %}
+<div style="text-align:center; padding: 3rem 0; color: var(--text-secondary);">
+  {% if ui_lang == 'sr' %}
+  <p style="font-size: 1.2rem; margin-bottom: 0.5rem;">Još nema tema</p>
+  <p>Kliknite <a href="/new-topic">+ Nova tema</a> da počnete da učite.</p>
+  {% else %}
+  <p style="font-size: 1.2rem; margin-bottom: 0.5rem;">No topics yet</p>
+  <p>Click <a href="/new-topic">+ New Topic</a> to start learning something.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function setView(mode) {
+  document.body.className = mode === 'list' ? 'view-list' : '';
+  var g = document.getElementById('btn-grid');
+  var l = document.getElementById('btn-list');
+  if (g) g.classList.toggle('active', mode === 'grid');
+  if (l) l.classList.toggle('active', mode === 'list');
+  localStorage.setItem('school-view', mode);
+}
+(function() {
+  var saved = localStorage.getItem('school-view');
+  if (saved === 'list') setView('list');
+})();
+{% if any_generating %}
+(function poll() {
+  setTimeout(function() {
+    fetch('/api/status').then(function(r) { return r.json(); }).then(function(data) {
+      if (data.any_generating) {
+        location.reload();
+      }
+    }).catch(function() {});
+    setTimeout(poll, 10000);
+  }, 10000);
+})();
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block title %}Setup — Home School{% endblock %}
+
+{% block content %}
+<div class="setup-page">
+  <h1>Home School</h1>
+  <p class="setup-subtitle">Welcome! Let's configure your school to get started.</p>
+
+  <div class="setup-form">
+    <div class="setup-group">
+      <label for="setup-name">School Name</label>
+      <input type="text" id="setup-name" value="" placeholder="e.g. My Home Learning Center">
+    </div>
+
+    <div class="setup-group">
+      <label for="setup-mode">Mode</label>
+      <select id="setup-mode" onchange="updateForm()">
+        <option value="cli">Claude Code CLI (local installation)</option>
+        <option value="api">API (HTTP calls)</option>
+      </select>
+      <small id="mode-hint">Uses your locally installed Claude Code CLI. Requires active subscription.</small>
+    </div>
+
+    <div class="setup-group" id="group-provider" style="display:none">
+      <label for="setup-provider">Provider</label>
+      <select id="setup-provider" onchange="updateForm()">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openai">OpenAI (GPT)</option>
+        <option value="ollama">Ollama (Local, Free)</option>
+      </select>
+    </div>
+
+    <div class="setup-group">
+      <label for="setup-model">Model</label>
+      <input type="text" id="setup-model" value="claude-opus-4-6" placeholder="e.g. claude-opus-4-6">
+      <small id="model-hint"></small>
+    </div>
+
+    <div class="setup-group" id="group-apikey" style="display:none">
+      <label for="setup-apikey">API Key</label>
+      <input type="password" id="setup-apikey" placeholder="sk-...">
+    </div>
+
+    <div class="setup-group" id="group-apibase" style="display:none">
+      <label for="setup-apibase">API Base URL</label>
+      <input type="text" id="setup-apibase" placeholder="http://localhost:11434">
+      <small>Leave empty for default endpoints</small>
+    </div>
+
+    <div class="setup-group">
+      <label for="setup-lessons">Initial lessons per topic</label>
+      <input type="number" id="setup-lessons" value="3" min="1" max="15">
+      <small>Number of lessons generated automatically when you create a new topic. You can always generate more later.</small>
+    </div>
+
+    <div class="setup-group">
+      <label for="setup-pin">PIN (optional)</label>
+      <input type="password" id="setup-pin" placeholder="4-8 digit PIN" maxlength="8" inputmode="numeric" pattern="[0-9]*">
+      <small>Protects access to your school. Leave empty for no authentication.</small>
+    </div>
+
+    <div class="setup-actions">
+      <button class="btn btn-secondary" id="test-btn" onclick="testConnection()">Test Connection</button>
+      <button class="btn btn-primary" id="save-btn" onclick="saveConfig()" disabled>Save &amp; Start</button>
+    </div>
+
+    <div class="setup-status" id="setup-status"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function updateForm() {
+  var mode = document.getElementById('setup-mode').value;
+  var providerGroup = document.getElementById('group-provider');
+  var apikeyGroup = document.getElementById('group-apikey');
+  var apibaseGroup = document.getElementById('group-apibase');
+  var modelInput = document.getElementById('setup-model');
+  var modelHint = document.getElementById('model-hint');
+  var modeHint = document.getElementById('mode-hint');
+
+  if (mode === 'cli') {
+    providerGroup.style.display = 'none';
+    apikeyGroup.style.display = 'none';
+    apibaseGroup.style.display = 'none';
+    modelInput.value = 'claude-opus-4-6';
+    modelHint.textContent = '';
+    modeHint.textContent = 'Uses your locally installed Claude Code CLI. Requires active subscription.';
+  } else {
+    providerGroup.style.display = '';
+    modeHint.textContent = 'Calls AI provider APIs directly. Works in Docker or any environment.';
+    var provider = document.getElementById('setup-provider').value;
+    if (provider === 'anthropic') {
+      apikeyGroup.style.display = '';
+      apibaseGroup.style.display = 'none';
+      modelInput.value = 'claude-sonnet-4-6';
+      modelHint.textContent = '';
+    } else if (provider === 'openai') {
+      apikeyGroup.style.display = '';
+      apibaseGroup.style.display = 'none';
+      modelInput.value = 'gpt-4o';
+      modelHint.textContent = '';
+    } else if (provider === 'ollama') {
+      apikeyGroup.style.display = 'none';
+      apibaseGroup.style.display = '';
+      modelInput.value = 'llama3';
+      modelHint.textContent = '';
+    }
+  }
+  document.getElementById('save-btn').disabled = true;
+  setStatus('');
+}
+
+function getConfig() {
+  var mode = document.getElementById('setup-mode').value;
+  var cfg = {
+    school_name: document.getElementById('setup-name').value || 'Home School',
+    mode: mode,
+    provider: mode === 'cli' ? 'claude-code' : document.getElementById('setup-provider').value,
+    model: document.getElementById('setup-model').value,
+    api_key: document.getElementById('setup-apikey').value,
+    api_base: document.getElementById('setup-apibase').value,
+    initial_lessons: parseInt(document.getElementById('setup-lessons').value) || 3,
+    pin: document.getElementById('setup-pin').value,
+    topics_dir: './topics'
+  };
+  return cfg;
+}
+
+function setStatus(msg, type) {
+  var el = document.getElementById('setup-status');
+  el.textContent = msg;
+  el.className = 'setup-status' + (type ? ' setup-status-' + type : '');
+}
+
+function validate() {
+  var errors = [];
+  var mode = document.getElementById('setup-mode').value;
+  var provider = document.getElementById('setup-provider').value;
+
+  if (!document.getElementById('setup-name').value.trim()) errors.push('setup-name');
+  if (!document.getElementById('setup-model').value.trim()) errors.push('setup-model');
+  if (mode === 'api' && (provider === 'anthropic' || provider === 'openai')) {
+    if (!document.getElementById('setup-apikey').value.trim()) errors.push('setup-apikey');
+  }
+
+  document.querySelectorAll('.setup-group input, .setup-group select').forEach(function(el) {
+    el.classList.remove('input-error');
+  });
+  errors.forEach(function(id) {
+    document.getElementById(id).classList.add('input-error');
+  });
+
+  if (errors.length) {
+    setStatus('Please fill in all required fields', 'error');
+    document.getElementById(errors[0]).focus();
+    return false;
+  }
+  return true;
+}
+
+function testConnection() {
+  if (!validate()) return;
+  var btn = document.getElementById('test-btn');
+  btn.disabled = true;
+  btn.textContent = 'Testing...';
+  setStatus('');
+
+  fetch('/api/test-connection', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(getConfig())
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = 'Test Connection';
+    if (data.ok) {
+      setStatus('Connection successful! Response: ' + data.response, 'success');
+      document.getElementById('save-btn').disabled = false;
+    } else {
+      setStatus('Connection failed: ' + data.error, 'error');
+      document.getElementById('save-btn').disabled = true;
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = 'Test Connection';
+    setStatus('Request failed: ' + err.message, 'error');
+  });
+}
+
+function saveConfig() {
+  if (!validate()) return;
+  var btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  fetch('/api/setup', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(getConfig())
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      window.location.href = '/';
+    } else {
+      setStatus('Save failed: ' + (data.error || 'Unknown error'), 'error');
+      btn.disabled = false;
+      btn.textContent = 'Save & Start';
+    }
+  })
+  .catch(function(err) {
+    setStatus('Save failed: ' + err.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Save & Start';
+  });
+}
+
+updateForm();
+</script>
+{% endblock %}

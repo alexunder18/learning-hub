@@ -1,0 +1,18 @@
+<svg viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" rx="40" fill="#121218"/>
+  <!-- Two book pages that together form a house roof -->
+  <path d="M96 38 L48 80 Q70 75 96 88 Z" fill="#1e3a6e" stroke="#326ce5" stroke-width="2"/>
+  <path d="M96 38 L144 80 Q122 75 96 88 Z" fill="#243d6e" stroke="#326ce5" stroke-width="2"/>
+  <!-- Spine -->
+  <line x1="96" y1="38" x2="96" y2="88" stroke="#5b9aff" stroke-width="2.5"/>
+  <!-- House body grows from book -->
+  <path d="M48 80 L48 148 L144 148 L144 80" fill="none" stroke="#326ce5" stroke-width="2"/>
+  <!-- Lesson bars stacked inside -->
+  <rect x="62" y="98" width="28" height="4" rx="1" fill="#326ce5" opacity="0.3"/>
+  <rect x="62" y="106" width="28" height="4" rx="1" fill="#326ce5" opacity="0.25"/>
+  <rect x="62" y="114" width="28" height="4" rx="1" fill="#326ce5" opacity="0.2"/>
+  <rect x="62" y="122" width="28" height="4" rx="1" fill="#326ce5" opacity="0.15"/>
+  <!-- Door -->
+  <path d="M104 148 L104 112 Q104 108 108 108 L128 108 Q132 108 132 112 L132 148" fill="#0f1729" stroke="#326ce5" stroke-width="1.5"/>
+  <circle cx="126" cy="128" r="2" fill="#5b9aff" opacity="0.5"/>
+</svg>

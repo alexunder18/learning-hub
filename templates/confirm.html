@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Potvrda teme' if ui_lang == 'sr' else 'Confirm Topic' }} &mdash; {{ school_name }}{% endblock %}
+
+{% block content %}
+<a href="/new-topic" class="fab-toggle fab-back" aria-label="{{ 'Nazad' if ui_lang == 'sr' else 'Back' }}" id="back-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a>
+
+<div class="has-fab-back"></div>
+
+<div class="confirm-page" id="confirm-page">
+  <div class="confirm-icon" id="confirm-icon"></div>
+  <h1 id="confirm-title"></h1>
+  <p class="confirm-mission" id="confirm-mission"></p>
+
+  <h2 id="syllabus-heading"></h2>
+  <ol class="confirm-syllabus" id="confirm-syllabus"></ol>
+
+  <div class="confirm-actions" id="confirm-actions">
+    <button class="btn btn-primary" id="approve-btn" onclick="approve()"></button>
+    <button class="btn btn-secondary" onclick="goBack()"></button>
+  </div>
+</div>
+
+<div class="confirm-page" id="creating-state" style="display:none; text-align:center; padding:4rem 1rem;">
+  <span class="spinner"></span>
+  <p id="creating-text" style="margin-top:1rem; color:var(--text-secondary);"></p>
+</div>
+
+<div class="confirm-page" id="done-state" style="display:none; text-align:center; padding:4rem 1rem;">
+  <div style="font-size:3rem; margin-bottom:1rem;">&#10003;</div>
+  <h2 id="done-title"></h2>
+  <p id="done-desc" style="color:var(--text-secondary); margin-bottom:1.5rem;"></p>
+  <a id="done-link" class="btn btn-primary"></a>
+</div>
+
+<div class="confirm-page" id="error-state" style="display:none; text-align:center; padding:4rem 1rem;">
+  <p style="color:var(--red);" id="error-text"></p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var UI_LANG = '{{ ui_lang }}';
+var sr = UI_LANG === 'sr';
+
+var mission = JSON.parse(sessionStorage.getItem('school_mission') || 'null');
+var conversation = JSON.parse(sessionStorage.getItem('school_conversation') || '[]');
+
+if (!mission) {
+  window.location.href = '/new-topic';
+} else {
+  document.getElementById('confirm-icon').textContent = mission.icon || '';
+  document.getElementById('confirm-title').textContent = mission.topic_name;
+  document.getElementById('confirm-mission').textContent = mission.why;
+  document.getElementById('syllabus-heading').textContent = sr ? 'Planirane lekcije' : 'Planned lessons';
+
+  var list = document.getElementById('confirm-syllabus');
+  mission.syllabus.forEach(function(s) {
+    var li = document.createElement('li');
+    li.textContent = s;
+    list.appendChild(li);
+  });
+
+  var actions = document.getElementById('confirm-actions');
+  var approveBtn = actions.querySelector('.btn-primary');
+  approveBtn.textContent = sr ? 'Odobri i generiši' : 'Approve & Generate';
+  var backBtn = actions.querySelector('.btn-secondary');
+  backBtn.textContent = sr ? 'Vrati se na uređivanje' : 'Back to editing';
+
+  document.getElementById('creating-text').textContent = sr
+    ? 'Kreiranje teme i generisanje prve lekcije... Ovo može potrajati par minuta.'
+    : 'Creating topic and generating first lesson... This may take a couple of minutes.';
+  document.getElementById('done-title').textContent = sr ? 'Tema kreirana!' : 'Topic Created!';
+  document.getElementById('done-desc').textContent = sr
+    ? 'Vaša prva lekcija se generiše. Pojaviće se na stranici teme.'
+    : 'Your first lesson is being generated. It will appear on the topic page.';
+}
+
+function approve() {
+  document.getElementById('confirm-page').style.display = 'none';
+  document.getElementById('creating-state').style.display = 'block';
+
+  apiFetch('/api/approve-topic', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mission: mission, conversation: conversation })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      sessionStorage.removeItem('school_mission');
+      sessionStorage.removeItem('school_conversation');
+      document.getElementById('creating-state').style.display = 'none';
+      document.getElementById('done-state').style.display = 'block';
+      var link = document.getElementById('done-link');
+      link.href = '/topic/' + data.slug;
+      link.textContent = sr ? 'Idi na temu →' : 'Go to Topic →';
+      document.getElementById('back-btn').href = '/';
+    } else {
+      document.getElementById('creating-state').style.display = 'none';
+      document.getElementById('error-state').style.display = 'block';
+      document.getElementById('error-text').textContent = data.error || 'Error';
+    }
+  })
+  .catch(function() {
+    document.getElementById('creating-state').style.display = 'none';
+    document.getElementById('error-state').style.display = 'block';
+    document.getElementById('error-text').textContent = sr
+      ? 'Greška u povezivanju. Pokušajte ponovo.'
+      : 'Connection error. Please try again.';
+  });
+}
+
+function goBack() {
+  window.location.href = '/new-topic';
+}
+</script>
+{% endblock %}

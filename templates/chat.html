@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Nova tema' if ui_lang == 'sr' else 'New Topic' }} &mdash; {{ school_name }}{% endblock %}
+
+{% block subtitle %}
+<p class="site-subtitle">{{ 'Nova tema' if ui_lang == 'sr' else 'New Topic' }}</p>
+{% endblock %}
+
+{% block content %}
+<div class="chat-page" id="chat-page">
+  <a href="/" class="fab-toggle fab-back" aria-label="{{ 'Nazad' if ui_lang == 'sr' else 'Back' }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></a>
+
+  <div class="chat-container">
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-message chat-assistant">
+        {% if ui_lang == 'sr' %}
+        <p><strong>Dobrodošli!</strong></p>
+        <p>Pomoći ću vam da postavite novu temu za učenje. Recite mi: <strong>šta želite da naučite i zašto?</strong></p>
+        <p>Budite specifični &mdash; na primer, "Ljudsko telo i zdravlje &mdash; kako organi i sistemi funkcionišu" je mnogo bolje od samo "Biologija."</p>
+        <p>Možete pisati na srpskom ili engleskom &mdash; lekcije će biti kreirane na istom jeziku koji koristite ovde.</p>
+        {% else %}
+        <p><strong>Welcome!</strong></p>
+        <p>I'll help you set up a new learning topic. Tell me: <strong>what do you want to learn, and why?</strong></p>
+        <p>Be specific &mdash; for example, "Human body and health &mdash; how organs and systems work" is much better than just "Biology."</p>
+        <p>You can write in English or Serbian &mdash; I'll create all lessons in the same language you use here.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="chat-input-area" id="chat-input-area">
+      <textarea class="chat-input" id="chat-input" rows="1"
+        placeholder="{{ 'Šta želite da naučite?' if ui_lang == 'sr' else 'What do you want to learn?' }}"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+      <button class="chat-send-btn" id="send-btn" onclick="sendMessage()" aria-label="{{ 'Pošalji' if ui_lang == 'sr' else 'Send' }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var conversationHistory = JSON.parse(sessionStorage.getItem('school_conversation') || '[]');
+var UI_LANG = '{{ ui_lang }}';
+
+var UI = {
+  en: {
+    thinking: 'Thinking...',
+    error: 'Error: ',
+    connError: 'Connection error. Please try again.'
+  },
+  sr: {
+    thinking: 'Razmišljam...',
+    error: 'Greška: ',
+    connError: 'Greška u povezivanju. Pokušajte ponovo.'
+  }
+};
+
+function t(key) { return (UI[UI_LANG] || UI.en)[key] || UI.en[key]; }
+
+function addMessage(role, html) {
+  var div = document.createElement('div');
+  div.className = 'chat-message chat-' + role;
+  div.innerHTML = html;
+  document.getElementById('chat-messages').appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth' });
+}
+
+function setInputEnabled(enabled) {
+  document.getElementById('chat-input').disabled = !enabled;
+  document.getElementById('send-btn').disabled = !enabled;
+}
+
+function sendMessage() {
+  var input = document.getElementById('chat-input');
+  var text = input.value.trim();
+  if (!text) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  var oldOpts = document.getElementById('chat-options');
+  if (oldOpts) oldOpts.remove();
+  addMessage('user', escapeHtml(text));
+  setInputEnabled(false);
+
+  conversationHistory.push({ role: 'user', content: text });
+  sessionStorage.setItem('school_conversation', JSON.stringify(conversationHistory));
+
+  var typing = document.createElement('div');
+  typing.className = 'chat-typing';
+  typing.id = 'typing-indicator';
+  typing.innerHTML = '<span class="spinner"></span> ' + t('thinking');
+  document.getElementById('chat-messages').appendChild(typing);
+  typing.scrollIntoView({ behavior: 'smooth' });
+
+  apiFetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages: conversationHistory })
+  })
+  .then(r => r.json())
+  .then(data => {
+    var ti = document.getElementById('typing-indicator');
+    if (ti) ti.remove();
+
+    if (data.error) {
+      addMessage('assistant', '<p style="color:var(--red)">' + t('error') + escapeHtml(data.error) + '</p>');
+      setInputEnabled(true);
+      return;
+    }
+
+    conversationHistory.push({ role: 'assistant', content: data.message });
+    sessionStorage.setItem('school_conversation', JSON.stringify(conversationHistory));
+    addMessage('assistant', data.html || escapeHtml(data.message));
+
+    if (data.mission_ready) {
+      sessionStorage.setItem('school_mission', JSON.stringify(data.mission));
+      sessionStorage.setItem('school_conversation', JSON.stringify(conversationHistory));
+      window.location.href = '/new-topic/confirm';
+      return;
+    } else {
+      setInputEnabled(true);
+      if (data.options && data.options.length > 0) {
+        showOptions(data.options);
+      }
+    }
+  })
+  .catch(() => {
+    var ti = document.getElementById('typing-indicator');
+    if (ti) ti.remove();
+    addMessage('assistant', '<p style="color:var(--red)">' + t('connError') + '</p>');
+    setInputEnabled(true);
+  });
+}
+
+function showOptions(options) {
+  var container = document.createElement('div');
+  container.className = 'chat-options';
+  container.id = 'chat-options';
+  options.forEach(function(opt, i) {
+    var btn = document.createElement('button');
+    btn.className = 'chat-option-btn';
+    btn.innerHTML = '<span class="chat-option-num">' + (i + 1) + '</span> ' + escapeHtml(opt);
+    btn.onclick = function() { pickOption(opt); };
+    container.appendChild(btn);
+  });
+  document.getElementById('chat-messages').appendChild(container);
+  container.scrollIntoView({ behavior: 'smooth' });
+}
+
+function pickOption(text) {
+  var opts = document.getElementById('chat-options');
+  if (opts) opts.remove();
+  document.getElementById('chat-input').value = text;
+  sendMessage();
+}
+
+function escapeHtml(text) {
+  var d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+document.getElementById('chat-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+});
+
+// Restore chat from sessionStorage if returning from confirm page
+if (conversationHistory.length > 0) {
+  document.getElementById('chat-messages').innerHTML = '';
+  conversationHistory.forEach(function(msg) {
+    if (msg.role === 'user') {
+      addMessage('user', escapeHtml(msg.content));
+    } else {
+      var html = msg.content.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+      html = html.replace(/<mission>[\s\S]*?<\/mission>/g, '');
+      html = html.replace(/<options>[\s\S]*?<\/options>/g, '');
+      html = '<p>' + html.trim() + '</p>';
+      addMessage('assistant', html);
+    }
+  });
+  var msgs = document.getElementById('chat-messages');
+  msgs.lastElementChild && msgs.lastElementChild.scrollIntoView();
+}
+
+// Pin layout to visual viewport (handles mobile keyboard + browser chrome)
+if (window.visualViewport) {
+  var chatPage = document.getElementById('chat-page');
+  function onViewportResize() {
+    var vv = window.visualViewport;
+    chatPage.style.height = vv.height + 'px';
+    chatPage.style.top = vv.offsetTop + 'px';
+  }
+  window.visualViewport.addEventListener('resize', onViewportResize);
+  window.visualViewport.addEventListener('scroll', onViewportResize);
+  onViewportResize();
+}
+</script>
+{% endblock %}

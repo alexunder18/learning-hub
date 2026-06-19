@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Login — {{ school_name }}{% endblock %}
+
+{% block content %}
+<div class="setup-page">
+  <h1>{{ school_name }}</h1>
+  <p class="setup-subtitle">{{ 'Unesite PIN za nastavak.' if ui_lang == 'sr' else 'Enter your PIN to continue.' }}</p>
+
+  <form method="POST" action="/login" class="setup-form">
+    <div class="setup-group">
+      <label for="pin">PIN</label>
+      <input type="password" id="pin" name="pin" placeholder="{{ 'Unesite PIN' if ui_lang == 'sr' else 'Enter PIN' }}" maxlength="8" inputmode="numeric" pattern="[0-9]*" autofocus>
+    </div>
+
+    {% if error %}
+    <div class="setup-status setup-status-error">{{ 'Pogrešan PIN. Pokušajte ponovo.' if ui_lang == 'sr' else 'Incorrect PIN. Please try again.' }}</div>
+    {% endif %}
+
+    <div class="setup-actions">
+      <button type="submit" class="btn btn-primary">{{ 'Prijava' if ui_lang == 'sr' else 'Login' }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

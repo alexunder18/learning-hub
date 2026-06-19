@@ -1,0 +1,9 @@
+{
+  "mode": "cli",
+  "provider": "claude-code",
+  "model": "claude-opus-4-6",
+  "api_key": "",
+  "api_base": "",
+  "initial_lessons": 3,
+  "topics_dir": "./topics"
+}

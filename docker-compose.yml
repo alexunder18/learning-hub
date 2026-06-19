@@ -1,0 +1,20 @@
+services:
+  school:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./topics:/app/topics
+      - ./config.json:/app/config.json
+    restart: unless-stopped
+
+  # Uncomment to run Ollama locally for free AI:
+  # ollama:
+  #   image: ollama/ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+
+# volumes:
+#   ollama_data:

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="{{ ui_lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" id="meta-theme-color" content="#f7f7f5">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <title>{% block title %}{{ school_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script>
+    (function() {
+      var h = document.documentElement;
+      var theme = localStorage.getItem('school-theme') || 'light';
+      h.setAttribute('data-theme', theme);
+      h.setAttribute('data-fontsize', localStorage.getItem('school-fontsize') || 'medium');
+      h.setAttribute('data-font', localStorage.getItem('school-font') || 'sans');
+      h.setAttribute('data-accent', localStorage.getItem('school-accent') || 'blue');
+      h.setAttribute('data-width', localStorage.getItem('school-width') || 'narrow');
+      var lang = localStorage.getItem('school-lang') || 'en';
+      h.setAttribute('data-lang', lang);
+      if (document.cookie.indexOf('school_lang=') === -1) {
+        document.cookie = 'school_lang=' + lang + ';path=/;max-age=31536000';
+      }
+      var tc = document.getElementById('meta-theme-color');
+      if (tc) tc.content = theme === 'dark' ? '#121218' : '#f7f7f5';
+    })();
+  </script>
+</head>
+<body>
+  <canvas id="constellation"></canvas>
+  <div class="container">
+    {% block content %}{% endblock %}
+
+  </div>
+
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+    window.CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]').content;
+    window.apiFetch = function(url, opts) {
+      opts = opts || {};
+      opts.headers = opts.headers || {};
+      opts.headers['X-CSRF-Token'] = window.CSRF_TOKEN;
+      return fetch(url, opts);
+    };
+  </script>
+  <script src="/static/constellation.js"></script>
+  <script src="/static/settings.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
