@@ -40,9 +40,47 @@
       {{ item.title }}
       {% endif %}
     </span>
+    {% if item.usage %}
+    <span class="syllabus-status token-badge" title="{{ item.usage.title_attr }}">
+      {{ item.usage.tokens_label }}
+      {%- if item.usage.attempts > 1 %} <span class="token-retry" aria-label="retries">&#8635;{{ item.usage.attempts }}</span>{% endif %}
+    </span>
+    {% endif %}
   </li>
   {% endfor %}
 </ul>
+
+{% if topic.usage and topic.usage.count %}
+<div class="usage-summary">
+  <span class="usage-summary-label">
+    {{ 'Potrošnja tokena' if ui_lang == 'sr' else 'Token usage' }}
+    <span class="usage-count">
+      {% if ui_lang == 'sr' %}
+      {{ topic.usage.count }} {{ 'generisanje' if topic.usage.count == 1 else 'generisanja' }}
+      {%- else -%}
+      {{ topic.usage.count }} {{ 'generation' if topic.usage.count == 1 else 'generations' }}
+      {%- endif %}
+      {%- if topic.usage.failed %}, {{ topic.usage.failed }} {{ 'neuspešnih' if ui_lang == 'sr' else 'failed' }}{% endif %}
+    </span>
+  </span>
+  <span class="usage-figures">
+    <span><b>{{ topic.usage.output_tokens_label }}</b> {{ 'izlaz' if ui_lang == 'sr' else 'output' }}</span>
+    <span><b>{{ topic.usage.cache_read_label }}</b> {{ 'keš' if ui_lang == 'sr' else 'cached' }}</span>
+    {% if topic.usage.cost_usd %}
+    <span class="usage-cost"><b>${{ '%.2f'|format(topic.usage.cost_usd) }}</b></span>
+    {% endif %}
+  </span>
+  {% if topic.usage.estimated %}
+  <span class="usage-note">
+    {% if ui_lang == 'sr' %}
+    Deo podataka je rekonstruisan iz CLI zapisa &mdash; bez podatka o ceni.
+    {% else %}
+    Some records were reconstructed from CLI transcripts &mdash; token counts only, no cost.
+    {% endif %}
+  </span>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if topic.references %}
 <hr>

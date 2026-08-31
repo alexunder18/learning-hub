@@ -968,3 +968,57 @@ body.view-list .topic-list { display: flex !important; }
   border-color: var(--red) !important;
   box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.15);
 }
+
+/* ── Token usage ───────────────────────────────── */
+
+.token-badge {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.token-retry { color: var(--red); font-weight: 600; }
+
+.usage-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.2rem;
+  margin-top: 1.5rem;
+  padding: 0.8rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--font-size-small);
+  color: var(--text-secondary);
+}
+
+.usage-summary-label { font-weight: 600; color: var(--text); }
+
+.usage-count {
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 0.4rem;
+}
+
+.usage-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-figures b { color: var(--text); font-weight: 600; }
+.usage-cost b { color: var(--green); }
+
+.usage-note {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}

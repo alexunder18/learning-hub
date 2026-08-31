@@ -1,11 +1,31 @@
+import json
 import os
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 import requests as http_requests
 
 from .config import load_config
+
+# Token usage from the most recent ai_complete() call, per thread — lesson
+# generation runs one worker thread per topic plus a glossary thread, so a
+# shared global would interleave.
+_usage_state = threading.local()
+
+
+def _record_usage(**fields):
+    _usage_state.last = fields
+
+
+def get_last_usage():
+    """Usage of the last ai_complete() on this thread, or None if unavailable."""
+    return getattr(_usage_state, "last", None)
+
+
+def clear_usage():
+    _usage_state.last = None
 
 
 def ai_complete(prompt, timeout=300):
@@ -54,8 +74,12 @@ def _cli_complete(prompt, model, timeout):
     env = os.environ.copy()
     env["HOME"] = str(Path.home())
 
+    # --tools "" disables every built-in tool. Without it the CLI runs as a full
+    # agent: it writes the lesson to a path of its own choosing and returns a prose
+    # summary instead of the HTML, which then gets saved as the lesson.
+    # --output-format json wraps the text in an envelope carrying token usage.
     result = subprocess.run(
-        [claude_cmd, "-p", "-", "--model", model],
+        [claude_cmd, "-p", "-", "--model", model, "--tools", "", "--output-format", "json"],
         input=prompt,
         capture_output=True,
         text=True,
@@ -68,7 +92,31 @@ def _cli_complete(prompt, model, timeout):
         print(f"[CLI ERROR] {err}")
         raise RuntimeError(err)
 
-    return result.stdout.strip()
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        # Older CLI, or --output-format unsupported: fall back to raw stdout.
+        _record_usage(provider="claude-code", model=model)
+        return result.stdout.strip()
+
+    if payload.get("is_error"):
+        raise RuntimeError(payload.get("result") or "claude reported an error")
+
+    usage = payload.get("usage") or {}
+    _record_usage(
+        provider="claude-code",
+        model=model,
+        input_tokens=usage.get("input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        cache_read=usage.get("cache_read_input_tokens", 0),
+        cache_creation=usage.get("cache_creation_input_tokens", 0),
+        cost_usd=payload.get("total_cost_usd"),
+        api_duration_ms=payload.get("duration_ms"),
+        num_turns=payload.get("num_turns"),
+        session_id=payload.get("session_id"),
+        model_usage=payload.get("modelUsage") or {},
+    )
+    return (payload.get("result") or "").strip()
 
 
 def _anthropic_complete(prompt, model, api_key, timeout):
@@ -88,7 +136,21 @@ def _anthropic_complete(prompt, model, api_key, timeout):
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Anthropic API error {resp.status_code}: {resp.text[:200]}")
-    return resp.json()["content"][0]["text"]
+    data = resp.json()
+    _record_anthropic_usage(model, data)
+    return data["content"][0]["text"]
+
+
+def _record_anthropic_usage(model, data):
+    usage = data.get("usage") or {}
+    _record_usage(
+        provider="anthropic",
+        model=data.get("model", model),
+        input_tokens=usage.get("input_tokens", 0),
+        output_tokens=usage.get("output_tokens", 0),
+        cache_read=usage.get("cache_read_input_tokens", 0),
+        cache_creation=usage.get("cache_creation_input_tokens", 0),
+    )
 
 
 def _openai_complete(prompt, model, api_key, api_base, timeout):
@@ -108,7 +170,14 @@ def _openai_complete(prompt, model, api_key, api_base, timeout):
         )
         if resp.status_code != 200:
             raise RuntimeError(f"Ollama API error {resp.status_code}: {resp.text[:200]}")
-        return resp.json()["message"]["content"]
+        data = resp.json()
+        _record_usage(
+            provider="ollama",
+            model=data.get("model", model),
+            input_tokens=data.get("prompt_eval_count", 0),
+            output_tokens=data.get("eval_count", 0),
+        )
+        return data["message"]["content"]
 
     url = f"{api_base.rstrip('/')}/chat/completions"
     headers = {"content-type": "application/json"}
@@ -127,7 +196,15 @@ def _openai_complete(prompt, model, api_key, api_base, timeout):
     )
     if resp.status_code != 200:
         raise RuntimeError(f"OpenAI API error {resp.status_code}: {resp.text[:200]}")
-    return resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    usage = data.get("usage") or {}
+    _record_usage(
+        provider="openai",
+        model=data.get("model", model),
+        input_tokens=usage.get("prompt_tokens", 0),
+        output_tokens=usage.get("completion_tokens", 0),
+    )
+    return data["choices"][0]["message"]["content"]
 
 
 def _anthropic_chat(messages, system_prompt, cfg):
@@ -150,4 +227,6 @@ def _anthropic_chat(messages, system_prompt, cfg):
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Anthropic API error {resp.status_code}: {resp.text[:200]}")
-    return resp.json()["content"][0]["text"]
+    data = resp.json()
+    _record_anthropic_usage(cfg.get("model", "claude-sonnet-4-6"), data)
+    return data["content"][0]["text"]

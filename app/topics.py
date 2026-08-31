@@ -1,9 +1,73 @@
+import json
 import re
 import glob
 from pathlib import Path
 
 from .config import get_topics_dir
 from .generator import get_lesson_status
+
+_USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_read", "cache_creation")
+
+
+def format_tokens(n):
+    if not n:
+        return "0"
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k"
+    return str(n)
+
+
+def load_usage(topic_dir):
+    """Aggregate token usage per lesson number, plus a topic-wide total.
+
+    Multiple records for one lesson (retries) accumulate — the true cost of
+    producing that lesson includes the attempts that failed.
+    """
+    empty_totals = dict.fromkeys(_USAGE_FIELDS, 0)
+    totals = {**empty_totals, "cost_usd": 0.0, "count": 0, "failed": 0, "estimated": False}
+    by_num = {}
+
+    usage_file = topic_dir / "learning-records" / "usage.jsonl"
+    if not usage_file.exists():
+        return by_num, totals
+
+    for line in usage_file.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        totals["count"] += 1
+        for field in _USAGE_FIELDS:
+            totals[field] += record.get(field, 0) or 0
+        totals["cost_usd"] += record.get("cost_usd") or 0.0
+        if not record.get("ok", True):
+            totals["failed"] += 1
+        if record.get("source") == "transcript-backfill":
+            totals["estimated"] = True
+
+        if record.get("kind") != "lesson":
+            continue
+        slot = by_num.setdefault(record.get("num"), {**empty_totals, "cost_usd": 0.0, "attempts": 0})
+        slot["attempts"] += 1
+        for field in _USAGE_FIELDS:
+            slot[field] += record.get(field, 0) or 0
+        slot["cost_usd"] += record.get("cost_usd") or 0.0
+
+    for slot in by_num.values():
+        slot["tokens_label"] = format_tokens(slot["output_tokens"])
+        slot["title_attr"] = (
+            f"{slot['output_tokens']:,} output · {slot['input_tokens']:,} input · "
+            f"{slot['cache_read']:,} cache read · {slot['cache_creation']:,} cache write"
+            + (f" · ${slot['cost_usd']:.2f}" if slot["cost_usd"] else "")
+            + (f" · {slot['attempts']} attempts" if slot["attempts"] > 1 else "")
+        )
+
+    for field in _USAGE_FIELDS:
+        totals[f"{field}_label"] = format_tokens(totals[field])
+    return by_num, totals
 
 
 def parse_mission_file(mission_path):
@@ -110,6 +174,8 @@ def get_topic_detail(slug):
         for f in sorted(reference_dir.glob("*.html")):
             ref_files.append({"file": f.name, "title": f.stem.replace("-", " ").title()})
 
+    usage_by_num, usage_total = load_usage(topic_dir)
+
     syllabus_items = []
     if syllabus:
         for i, title in enumerate(syllabus, 1):
@@ -118,6 +184,7 @@ def get_topic_detail(slug):
                 "title": title,
                 "status": get_lesson_status(slug, i),
                 "file": lesson_files.get(i, {}).get("file"),
+                "usage": usage_by_num.get(i),
             })
     else:
         for num in sorted(existing_numbers):
@@ -127,6 +194,7 @@ def get_topic_detail(slug):
                 "title": lf.get("title", f"Lesson {num}"),
                 "status": "completed",
                 "file": lf.get("file"),
+                "usage": usage_by_num.get(num),
             })
 
     return {
@@ -136,6 +204,7 @@ def get_topic_detail(slug):
         "language": mission.get("language", "en"),
         "syllabus": syllabus_items,
         "references": ref_files,
+        "usage": usage_total,
     }
 
 
