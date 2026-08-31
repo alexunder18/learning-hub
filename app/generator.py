@@ -1,15 +1,71 @@
+import json
 import threading
+import time
 import traceback
 from collections import deque
+from datetime import datetime, timezone
 
 from .config import load_config, get_topics_dir, DEFAULT_CONFIG
-from .providers import ai_generate
+from .providers import ai_generate, clear_usage, get_last_usage
 from .prompts import LESSON_SYSTEM_PROMPT
 from .security import sanitize_lesson_html
+
+USAGE_FILE = "usage.jsonl"
+_usage_write_lock = threading.Lock()
 
 lesson_queues = {}
 active_generation = {}
 queue_lock = threading.Lock()
+
+
+def record_usage(topic_dir, kind, num, title, started, ok, error=None):
+    """Append one token-usage record for a generation attempt.
+
+    Failures are recorded too — a retry's cost is otherwise invisible.
+    """
+    entry = {
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "kind": kind,
+        "num": num,
+        "title": title,
+        "ok": ok,
+        "elapsed_ms": int((time.time() - started) * 1000),
+    }
+    if error:
+        entry["error"] = str(error)[:300]
+    usage = get_last_usage()
+    if usage:
+        entry.update({k: v for k, v in usage.items() if v is not None})
+    else:
+        entry["usage_unavailable"] = True
+
+    records_dir = topic_dir / "learning-records"
+    try:
+        records_dir.mkdir(exist_ok=True)
+        with _usage_write_lock:
+            with (records_dir / USAGE_FILE).open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as e:
+        # Never let bookkeeping break generation.
+        print(f"[WARN] could not write usage record: {e}")
+    return entry
+
+
+def _require_html(html, what):
+    """Reject a response that isn't a complete HTML document.
+
+    A provider that answers in prose (e.g. an agentic CLI describing what it did)
+    would otherwise be saved verbatim and served as a broken page.
+    """
+    head = html.lstrip()[:200].lower()
+    if not head.startswith(("<!doctype html", "<html")):
+        raise RuntimeError(
+            f"{what}: provider did not return HTML "
+            f"(got {len(html)} chars starting with: {html.lstrip()[:120]!r})"
+        )
+    if "</html>" not in html.lower():
+        raise RuntimeError(f"{what}: HTML is truncated — no closing </html> tag")
+    return html
 
 
 def is_generating(slug):
@@ -129,12 +185,24 @@ Out of scope: {', '.join(mission.get('out_of_scope', ['None specified'])) if isi
 
 Generate the complete HTML lesson now."""
 
-    html = ai_generate(prompt, LESSON_SYSTEM_PROMPT)
-    html = sanitize_lesson_html(strip_code_fences(html))
+    started = time.time()
+    clear_usage()
+    try:
+        html = ai_generate(prompt, LESSON_SYSTEM_PROMPT)
+        html = sanitize_lesson_html(strip_code_fences(html))
+        _require_html(html, f"lesson {lesson_num}")
+    except Exception as e:
+        record_usage(topic_dir, "lesson", lesson_num, lesson_title, started, ok=False, error=e)
+        raise
 
     filename = f"{lesson_num:04d}-{slugify(lesson_title)}.html"
     (lessons_dir / filename).write_text(html, encoding="utf-8")
+    entry = record_usage(topic_dir, "lesson", lesson_num, lesson_title, started, ok=True)
     print(f"[SAVED] {slug}: {filename}")
+    print(f"[USAGE] {slug} lesson {lesson_num}: "
+          f"{entry.get('output_tokens', 0)} out / {entry.get('input_tokens', 0)} in, "
+          f"cache {entry.get('cache_read', 0)} read, "
+          f"${entry.get('cost_usd', 0) or 0:.4f}, {entry['elapsed_ms'] // 1000}s")
 
 
 def _generate_glossary(slug, mission):
@@ -163,9 +231,18 @@ Create a beautiful, self-contained HTML reference document with:
 
 Output ONLY the complete HTML. Start with <!DOCTYPE html>."""
 
-    html = ai_generate(prompt, LESSON_SYSTEM_PROMPT)
-    html = sanitize_lesson_html(strip_code_fences(html))
+    started = time.time()
+    clear_usage()
+    try:
+        html = ai_generate(prompt, LESSON_SYSTEM_PROMPT)
+        html = sanitize_lesson_html(strip_code_fences(html))
+        _require_html(html, "glossary")
+    except Exception as e:
+        record_usage(topics_dir / slug, "glossary", 0, "Glossary", started, ok=False, error=e)
+        raise
+
     (reference_dir / "glossary.html").write_text(html, encoding="utf-8")
+    record_usage(topics_dir / slug, "glossary", 0, "Glossary", started, ok=True)
     print(f"[SAVED] {slug}: glossary")
 
 
